@@ -206,9 +206,8 @@ function xIOn:parse_post(event)
   local err;
 
   if event.body:sub(1,1) == "*" then
-    if event.body:match("**") then
-      tags_w, text = (event.body.."\n"):match("(*[^\r\n]*)[*][*](.+)\n");
---[[?!?!?!?!]]
+    if event.body:match("%*%*") then
+      tags_w, text = (event.body.."\n"):match("(*[^\r\n]*)%*%*(.+)\n");
     else
       tags_w, text = (event.body.."\n"):match("(*[^\r\n]*)[\r\n]+([^%s].*)\n");
     end;
@@ -231,6 +230,7 @@ function xIOn:parse_post(event)
   end;
 
   for dst in ("\n"..text):gmatch("[\n%s"..[['"]@([^%s'";:,#]+[:]*[^%s'";:,#]+)]]) do
+    --[[TODO: Avoid long unreadable patterns]]
     table.insert(dest,dst);
   end;
 
