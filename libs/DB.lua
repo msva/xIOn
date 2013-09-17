@@ -10,7 +10,7 @@ function xIOn.DB:write_post(post)
       write post in DB.
       xIOn:user_options(psto_notation)
   ]]--
-  post.id = math.random(100000);
+  post.id = math.random(10000000);
   return post
 end;
 
@@ -18,8 +18,8 @@ function xIOn.DB:read_post(post)
   --[[ TODO:
       read post from DB.
       xIOn:user_options(psto_notation)
-  ]]--
   post.id = psto(post.id);
+  ]]--
   return post
 end;
 

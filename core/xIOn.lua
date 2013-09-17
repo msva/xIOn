@@ -2,7 +2,6 @@ xIOn = {};
 local DB = require "libs.DB";
 local cmds = require "plugins.commands"
 
-
 local log = require "util.logger".init("core");
 local check = require "util.checks".fatal;
 local chunk, err = loadfile("config.lua");
@@ -21,6 +20,7 @@ check(config.mode, "Bot's password for JID is not set!");
 stanza = require "util.stanza";
 xIOn.XMPP = require "verse".init(config.mode); -- XMPP client library
 xIOn.connection = xIOn.XMPP.new(xIOn.XMPP.new_logger("xmpp"));
+xIOn.roster = {};
 
 local xmlns_lib = require "libs.xmlns"
 
@@ -74,6 +74,13 @@ if config.debug then
 end
 
 
+
+local function bare_jid(jid)
+  return jid:gsub("(.*@.*%..*)/.*","%1")
+end
+local function jid2nick(jid)
+  return jid:gsub("(.*)@.*%..*/.*","%1")
+end
 
 function xIOn:connect(mode, jid, password)
   if mode == "client" then
@@ -293,12 +300,17 @@ function xIOn:write_post(post,event)
       ..post_links("edit")
       ..[[</div>]]
     );
-    xIOn:read_post(post,event); --TODO: remove
+      for barejid,user in pairs(xIOn.connection.roster.items) do
+        if (user.jid ~= bare_jid(event.sender.jid)) and (user.subscription == "both") then
+          post.author = xIOn.connection.roster.items[bare_jid(event.sender.jid)].name or jid2nick(event.sender.jid);
+          xIOn:read_post(post,event,user.jid); --TODO: remove
+        end
+      end
   end;
 end;
 
-function xIOn:read_post(post,event)
-  --TODO
+function xIOn:read_post(post,event,receiver)
+  --TODO: remake that
 -- post = xIOn.DB:read_post(id)
   post = xIOn.DB:read_post(post)
   ----------- read:post --------------
@@ -306,8 +318,7 @@ function xIOn:read_post(post,event)
     _S.post_id = post.id;
     _S.stanza_type = event.stanza.attr.type;
     _S.jid = config.jid;
-    local sjid = event.sender.jid;
-    
+    local sjid = receiver or event.sender.jid;
     local post_links = require "core.tpl".init("post_links",_S);
 
     local author = xIOn:get_nick_by_id(post.author)
@@ -323,17 +334,20 @@ function xIOn:read_post(post,event)
     xIOn:send_html_message(
       sjid,
       _S.stanza_type,
-      (post.is_html
-        and
-          "Ваше сообщение"
-        or
-      "\nАктивирован тестовый режим. Ваше сообщение:\n"
-      .."@"..author
+ --     (post.is_html
+ --       and
+ --         "Ваше сообщение"
+ --       or
+--      "\nАктивирован тестовый режим. Ваше сообщение:\n"
+--      ..
+      "@"..author
       ..(tags_s and ("\nТеги: "..tags_s) or "")
       .."\nТекст:\n"..post.text.."\n\n"
-      .."#"..post.id),
-      [[<div class="post">Активирован тестовый режим. Ваше сообщение:</div>]]
-        ..[[<a]]
+      .."#"..post.id,
+--)
+--      [[<div class="post">Активирован тестовый режим. Ваше сообщение:</div>]]
+--        ..
+      [[<a]]
           ..[[ style="text-decoration: none; color: #0055FF; font-weight: bold;"]]
           ..[[ title="Инфо о пользователе @]]..author..[["]]
           ..[[ href="xmpp:]]..config.jid..[[?message;type=]].._S.stanza_type..[[;body=%40]]..author..[[">@]]..author.."</a>"
@@ -469,6 +483,7 @@ end;
 
 function xIOn:ready_hook()
   xIOn.connection:hook("ready", function ()
+
     xIOn.connection:hook_pep(xmlns_mood, function (event)
       -- Other event, than we generate on stanza hook and so other, then we use in IO.
       if config.jid:match(event.from) then
@@ -774,6 +789,11 @@ function xIOn:ready_hook()
       if stanza.attr.type ~= 'subscribe' then return nil; end
       xIOn:send_presence(stanza.attr.from, 'subscribed');
     end);
+
+    xIOn.connection.roster:fetch(function(roster)
+          xIOn.roster = roster;
+    end);
+
 
 end); --[[ xIOn.connection:hook ]]
 

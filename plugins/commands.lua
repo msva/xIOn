@@ -280,7 +280,7 @@
           return;
         end
       
-        if post.dest and (#post.dest == 1) then
+        if post.dest and (#post.dest == 1) and (post.text == post.dest) then
           xIOn:send_message(event.sender.jid, event.stanza.attr.type, "\n"
             .."Инфо о пользователе @"
             ..post.dest[1]
