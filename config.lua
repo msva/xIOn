@@ -1,32 +1,36 @@
 -- write all config variables in lowercase
 
-
---[[ JID:
-If using component mode, then JID should be without resource.
-Otherwise — with it.
-PASSWORD: obviously, jid's password;
+--[[
+JID:
+	If using component mode, then JID should be without resource. Otherwise — with it.
+PASSWORD:
+	obviously, jid's password;
 ]]--
 
---[[ MODE:
-use "client" for "bot" mode.
-and "component" for "component" aka "transport" mode.
+--[[
+MODE:
+	use "client" for "bot" mode.
+	and "component" for "component" aka "transport" mode.
 ]]--
 mode = "client";
 
---[[ DEBUG:
-true for enable debug and false for disable
+--[[
+DEBUG:
+	true for enable debug and false for disable
 ]]--
 debug = true;
 
---[[ LANGUAGE:
-bot's default language
+--[[
+LANGUAGE:
+	bot's default language
 ]]--
 language = "ru";
 
 
---[[ VERSE_PLUGINS:
-list (table) of Verse's plugins, that will be loaded on bot's start
-sometimes load order is required
+--[[
+LIB_PLUGINS:
+	list (table) of Verse's plugins, that will be loaded on bot's start
+	sometimes load order is required
 ]]--
 lib_plugins = {
   "presence",
