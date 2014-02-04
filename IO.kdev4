@@ -1,3 +1,4 @@
 [Project]
 Manager=KDevCustomMakeManager
 Name=IO
+VersionControl=kdevgit

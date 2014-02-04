@@ -1,7 +1,7 @@
 -- Prosody IM
 -- Copyright (C) 2008-2010 Matthew Wild
 -- Copyright (C) 2008-2010 Waqas Hussain
--- 
+--
 -- This project is MIT/X11 licensed. Please see the
 -- COPYING file in the source package for more information.
 --
@@ -18,9 +18,9 @@ local pairs         =         pairs;
 local ipairs        =        ipairs;
 local type          =          type;
 local s_gsub        =   string.gsub;
+local s_sub         =    string.sub;
 local s_find        =   string.find;
 local os            =            os;
-local print         =         print;
 
 local do_pretty_printing = not os.getenv("WINDIR");
 local getstyle, getstring;
@@ -99,7 +99,7 @@ function stanza_mt:get_child(name, xmlns)
 		if (not name or child.name == name)
 			and ((not xmlns and self.attr.xmlns == child.attr.xmlns)
 				or child.attr.xmlns == xmlns) then
-			
+
 			return child;
 		end
 	end
@@ -152,9 +152,9 @@ end
 function stanza_mt:maptags(callback)
 	local tags, curr_tag = self.tags, 1;
 	local n_children, n_tags = #self, #tags;
-	
+
 	local i = 1;
-	while curr_tag <= n_tags do
+	while curr_tag <= n_tags and n_tags > 0 do
 		if self[i] == tags[curr_tag] then
 			local ret = callback(self[i]);
 			if ret == nil then
@@ -162,15 +162,41 @@ function stanza_mt:maptags(callback)
 				t_remove(tags, curr_tag);
 				n_children = n_children - 1;
 				n_tags = n_tags - 1;
+				i = i - 1;
+				curr_tag = curr_tag - 1;
 			else
 				self[i] = ret;
-				tags[i] = ret;
+				tags[curr_tag] = ret;
 			end
-			i = i + 1;
 			curr_tag = curr_tag + 1;
 		end
+		i = i + 1;
 	end
 	return self;
+end
+
+function stanza_mt:find(path)
+	local pos = 1;
+	local len = #path + 1;
+
+	repeat
+		local xmlns, name, text;
+		local char = s_sub(path, pos, pos);
+		if char == "@" then
+			return self.attr[s_sub(path, pos + 1)];
+		elseif char == "{" then
+			xmlns, pos = s_match(path, "^([^}]+)}()", pos + 1);
+		end
+		name, text, pos = s_match(path, "^([^@/#]*)([/#]?)()", pos);
+		name = name ~= "" and name or nil;
+		if pos == len then
+			if text == "#" then
+				return self:get_child_text(name, xmlns);
+			end
+			return self:get_child(name, xmlns);
+		end
+		self = self:get_child(name, xmlns);
+	until not self
 end
 
 function noesc()
@@ -239,13 +265,13 @@ end
 
 function stanza_mt.get_error(stanza)
 	local type, condition, text;
-	
+
 	local error_tag = stanza:get_child("error");
 	if not error_tag then
 		return nil, nil, nil;
 	end
 	type = error_tag.attr.type;
-	
+
 	for _, child in ipairs(error_tag.tags) do
 		if child.attr.xmlns == xmlns_stanzas then
 			if not text and child.name == "text" then
@@ -314,7 +340,7 @@ function deserialize(stanza)
 			stanza.tags = tags;
 		end
 	end
-	
+
 	return stanza;
 end
 
@@ -371,7 +397,7 @@ if do_pretty_printing then
 	local style_attrv = getstyle("red");
 	local style_tagname = getstyle("red");
 	local style_punc = getstyle("magenta");
-	
+
 	local attr_format = " "..getstring(style_attrk, "%s")..getstring(style_punc, "=")..getstring(style_attrv, "'%s'");
 	local top_tag_format = getstring(style_punc, "<")..getstring(style_tagname, "%s").."%s"..getstring(style_punc, ">");
 	--local tag_format = getstring(style_punc, "<")..getstring(style_tagname, "%s").."%s"..getstring(style_punc, ">").."%s"..getstring(style_punc, "</")..getstring(style_tagname, "%s")..getstring(style_punc, ">");
@@ -392,7 +418,7 @@ if do_pretty_printing then
 		end
 		return s_format(tag_format, t.name, attr_string, children_text, t.name);
 	end
-	
+
 	function stanza_mt.pretty_top_tag(t)
 		local attr_string = "";
 		if t.attr then

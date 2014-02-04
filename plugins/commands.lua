@@ -18,7 +18,7 @@
       --  c:set_status({show = "dnd", prio = 10, msg = "okay"})
         print(event.sender.jid.." pinged me!")
         xIOn:send(
-          verse.presence({to = event.sender.jid, from = config.jid})
+          xIOn.XMPP.presence({to = event.sender.jid, from = config.jid})
       --[[
           :tag("show"):text("online"):up()
           :tag("priority"):text("10"):up()
@@ -44,7 +44,7 @@
         if not (type(event) == "table") then
           return --TODO
         end --[[ event table ]]
-        xIOn:send(verse.presence({to = event.sender.jid, from = config.jid}));
+        xIOn:send(xIOn.XMPP.presence({to = event.sender.jid, from = config.jid}));
         xIOn:send_message(event.sender.jid, event.stanza.attr.type,"\n".."Доставка сообщений включена.")
         end;
 
@@ -102,7 +102,7 @@
           return --TODO
         end --[[ event table ]]
         xIOn:send(
-          verse.presence({to = event.sender.jid, from=jid,
+          xIOn.XMPP.presence({to = event.sender.jid, from=jid,
           type = "unavailable"})
           :tag("status"):text("Прячемся от начальника"):up()
         );
@@ -529,7 +529,36 @@
           return "Справка по регистрации"
         end --[[ event info ]]
       end;
-      
+
+    tos =
+      function(event)
+        --TODO
+        if (event == "help") then
+          return "Основным и самым главным правилом сервиса является уважение "
+            .."всех участников друг к другу вне зависимости от любых факторов."
+			.."\n"
+			.."Допускается только вежливое общение между пользователями. "
+			.."Любая дискриминация запрещена. Грубое общение допускается "
+			.."только по обоюдному согласию и вне первого сообщения поста."
+			.."\n"
+			.."На сервисе так же рекомендуется соблюдение общечеловеческих "
+			.."моральных норм и ценностей."
+			.."\n"
+			.."Несоблюдение вышеописанных рекомендаций может привести к "
+			.."насильному переводу личного блога нарушителя в непубличный "
+			.."режим, а так же применение к нему политики WhiteList'инга: "
+			.."каждый, кто добровольно согласен общаться с нарушителем должен "
+			.."будет либо быть подписан на нарушителя, либо добавить его в WL."
+			.."\n"
+			.."Таким образом предполагается ограждать новых пользователей от "
+			.."слишком навязчивого внимания и от не очень конструктивных бесед "
+			.."с не очень конструктивными личностями."
+        end --[[ event help ]]
+        if (event == "info") then
+          return "Справка по правилам использования сервиса"
+        end --[[ event info ]]
+      end;
+
     pm =
       function(event)
         --TODO

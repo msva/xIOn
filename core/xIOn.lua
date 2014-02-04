@@ -2,36 +2,45 @@ xIOn = {};
 local DB = require "libs.DB";
 local cmds = require "plugins.commands"
 
-local log = require "util.logger".init("core");
+local ok, fun = pcall(function()
+        local unb64 = require("util.encodings").base64.decode;
+        assert(unb64("SGVsbG8=") == "Hello")
+        return unb64;
+end);
+
+if not ok then
+        ok, fun = pcall(function() return require("mime").unb64; end);
+        if not ok then
+                error("Could not find a base64 decoder")
+        end
+end
+unb64 = fun;
+
+local xmlns_lib = require "libs.xmlns"
+stanza = require "util.stanza";
 local check = require "util.checks".fatal;
+local log = require "util.logger".init("core");
 local chunk, err = loadfile("config.lua");
+
 check(chunk, "File or syntax error: ", err);
 config = {};
 setfenv(chunk, setmetatable(config, {__index = _G}));
 local ok, err = pcall(chunk);
 check(ok, "Error while processing config: ", err);
 setmetatable(config, nil);
-check(config.jid, "Bot's JID is not set!");
-check(config.password ,"Bot's password for JID is not set!");
-check(config.mode, "Bot's password for JID is not set!");
+check(config.xmpp.jid, "Bot's JID is not set!");
+check(config.xmpp.password ,"Bot's password for JID is not set!");
+check(config.xmpp.mode, "Bot's work mode is not set!");
 
+xIOn.XMPP = require "verse".init(config.xmpp.mode); -- XMPP client library
+xIOn.XMPP.connection = xIOn.XMPP.new(xIOn.XMPP.new_logger("xmpp"));
 
-
-stanza = require "util.stanza";
-xIOn.XMPP = require "verse".init(config.mode); -- XMPP client library
-xIOn.connection = xIOn.XMPP.new(xIOn.XMPP.new_logger("xmpp"));
-xIOn.roster = {};
-
-local xmlns_lib = require "libs.xmlns"
-
---[=[
-if not xIOn.connection then
+if not xIOn.XMPP.connection then
   error[[Somewhy you have broken distribution of xIOn]]
 end
-]=]
 
-for _,plug in ipairs(config.lib_plugins) do
-  xIOn.connection:add_plugin(plug)
+for _,plug in ipairs(config.xmpp.lib_plugins) do
+	xIOn.XMPP.connection:add_plugin(plug)
 end
 
 local identity = {
@@ -42,51 +51,54 @@ local identity = {
 
 local version = {
   name = "xIOn",
-  version = "0.0.4",
+  version = "0.0.5",
   platform = "ZOG"
 };
 
-xIOn.connection.version:set(version);
-xIOn.connection:set_identity(identity);
-xIOn.connection.caps.node = 'http://xion.im/about';
+xIOn.XMPP.connection.version:set(version);
+xIOn.XMPP.connection:set_identity(identity);
+xIOn.XMPP.connection.caps.node = 'http://xion.im/about';
 
-xIOn.connection:add_disco_feature(xmlns_geoloc_notify);
-xIOn.connection:add_disco_feature(xmlns_adhoc);
+xIOn.XMPP.connection:add_disco_feature(xmlns_geoloc_notify);
+xIOn.XMPP.connection:add_disco_feature(xmlns_adhoc);
+xIOn.XMPP.connection:add_disco_feature(xmlns_xhtml);
+
+xIOn.XMPP.roster = xIOn.XMPP.connection.roster;
 
 function xIOn:default_hooks()
-  xIOn.connection:hook("authentication-failure", function (err)
+  xIOn.XMPP.connection:hook("authentication-failure", function (err)
     print("Failed to log in! Error:"..tostring(err.condition));
   end);
-  xIOn.connection:hook("disconnected", function () print("Disconnected!"); os.exit(); end);
+  xIOn.XMPP.connection:hook("disconnected", function () print("Disconnected!"); os.exit(); end);
 
-  if config.debug then
+  if config.xmpp.debug then
     xIOn.XMPP.set_log_handler(print);
-    xIOn.connection:hook("outgoing-raw", print, math.huge);
-    xIOn.connection:hook("incoming-raw", print, math.huge);
+    xIOn.XMPP.connection:hook("outgoing-raw", print, math.huge);
+    xIOn.XMPP.connection:hook("incoming-raw", print, math.huge);
   end
 end
 
-local tr = require "core.l10n".init("core");
-language = config.language or "ru";
+local T = require "core.l10n".init("core");
+language = config.xmpp.language or "ru";
 
-if config.debug then
-  log('debug', "LANG: '"..language.."'");
-end
+--if config.xmpp.debug then
+  log('info', "LANG: '"..language.."'");
+--end
 
 
 
 local function bare_jid(jid)
-  return jid:gsub("(.*@.*%..*)/.*","%1")
+  return jid:gsub("(.*@.*%.?.*)/.*","%1")
 end
 local function jid2nick(jid)
-  return jid:gsub("(.*)@.*%..*/.*","%1")
+  return jid:gsub("(.*)@.*%..*/?.*","%1")
 end
 
 function xIOn:connect(mode, jid, password)
   if mode == "client" then
-    xIOn.connection:connect_client(jid, password)
+    xIOn.XMPP.connection:connect_client(jid, password)
   elseif mode == "component" then
-    xIOn.connection:connect_component(jid, password)
+    xIOn.XMPP.connection:connect_component(jid, password)
   else
     error([[We can work only as "component" or as "client", but you've defined ]]
     ..(mode or "nothing")..[[ as mode]]);
@@ -128,7 +140,7 @@ function xIOn:tags_to_html(tags,event)
         ..[[ class="tag"]]
         ..[[ style="text-decoration: none; color: #008E00; font-weight: bold;"]]
         ..[[ title="Получить последние сообщения с тегом *]]..tag..[["]]
-        ..[[ href="xmpp:]]..config.jid..[[?message;type=]]..stype..[[;body=*]]
+        ..[[ href="xmpp:]]..config.xmpp.jid..[[?message;type=]]..stype..[[;body=*]]
           ..tag..[[">]]
       .."*"..tag
       ..[[</a>]]
@@ -226,6 +238,11 @@ function xIOn:parse_post(event)
     text = text or "";
   end
 
+
+  if event.html then
+    print(11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111);
+  end
+
 --print("tags_w: ",tags_w,'\ntext:',text)
 
   for tag in (tags_w.."\n"):gmatch("*([^%s]*[^*\r\n]*[^*%s]+)[%s]") do
@@ -243,22 +260,15 @@ function xIOn:parse_post(event)
 
 
   text = text and stanza.xml_escape(text) or "";
+  text = text:gsub("\n","<br/>")
+--  print(type(text))
 
   local author = xIOn:get_user_id(event.sender.jid);
-  local is_html = false;
-
-  local html_cap = xIOn:get_user_settings(author, "html");
-
-  if (html_cap == 1) or (html_cap == 2) then
-    is_html = true;
-    text = text:gsub("\n","<br/>")
-  end
 
   local post = {
     tags = tags,
     author = author,
     text = text,
-    is_html = is_html,
     dest = dest,
     privacy = xIOn:get_post_privacy_mode(author,tags),
     writeable = xIOn:get_post_write_mode(tags),
@@ -274,7 +284,7 @@ function xIOn:write_post(post,event)
   local sjid = event.sender.jid;
   local _S = {};
     _S.stanza_type = event.stanza.attr.type;
-    _S.jid = config.jid;
+    _S.jid = config.xmpp.jid;
   local post_links = require "core.tpl".init("post_links",_S);
   if post.err then
     xIOn:send_message(sjid, _S.stanza_type, "\n"
@@ -282,14 +292,16 @@ function xIOn:write_post(post,event)
         .."\n"
         ..post.text);
   else
-    post = xIOn.DB:write_post(post); --TODO: post= -> post.id=
-   _S.post_id = post.id;
-    xIOn:send_html_message(
+	post = xIOn.DB:write_post(post); --TODO: post= -> post.id=
+	_S.post_id = post.id;
+	xIOn:send_html_message(
       sjid,
       _S.stanza_type,
       "\nСообщение опубликовано!\n"
       .."#"..post.id,
       [[<div class="post">Сообщение опубликовано</div>]]
+--      ..(event.html and [[<div>]]..stanza.xml_escape(event.html)..[[</div>]] or '')
+--      ..(stanza.xml_escape(stanza))
       ..[[<div class="post_links">]]
       ..post_links("read")
       ..post_links("delimiter")
@@ -300,9 +312,12 @@ function xIOn:write_post(post,event)
       ..post_links("edit")
       ..[[</div>]]
     );
-      for barejid,user in pairs(xIOn.connection.roster.items) do
+      for barejid,user in pairs(xIOn.XMPP.connection.roster.items) do
         if (user.jid ~= bare_jid(event.sender.jid)) and (user.subscription == "both") then
-          post.author = xIOn.connection.roster.items[bare_jid(event.sender.jid)].name or jid2nick(event.sender.jid);
+--        if (user.jid == bare_jid(event.sender.jid)) and (user.subscription == "both") then
+          post.author = xIOn.XMPP.connection.roster.items[bare_jid(event.sender.jid)].name or jid2nick(event.sender.jid);
+		  post.avatar = userinfo[bare_jid(event.sender.jid)].avatar;
+		  post.time = userinfo[bare_jid(event.sender.jid)].time;
           xIOn:read_post(post,event,user.jid); --TODO: remove
         end
       end
@@ -312,12 +327,24 @@ end;
 function xIOn:read_post(post,event,receiver)
   --TODO: remake that
 -- post = xIOn.DB:read_post(id)
+
+--[[
+    local xhtml = false;
+  local html_cap = xIOn:get_user_settings(author, "xhtml");
+
+  if (html_cap == 1) or (html_cap == 2) then
+    xhtml = true;
+  end
+
+]]
+
+
   post = xIOn.DB:read_post(post)
   ----------- read:post --------------
     local _S = {};
     _S.post_id = post.id;
     _S.stanza_type = event.stanza.attr.type;
-    _S.jid = config.jid;
+    _S.jid = config.xmpp.jid;
     local sjid = receiver or event.sender.jid;
     local post_links = require "core.tpl".init("post_links",_S);
 
@@ -325,34 +352,36 @@ function xIOn:read_post(post,event,receiver)
     local sender = xIOn:get_nick_by_id(xIOn:get_user_id(sjid));
 --  post.text = post.text and stanza.xml_escape(post.text) or "";
     local tags_s;
-    if post.is_html then
+    if post.xhtml then
       tags_s = xIOn:tags_to_html(post.tags,event);
     else
       tags_s = xIOn:tags_to_string(post.tags,event);
     end
-    
-    xIOn:send_html_message(
+
+	xIOn:send_html_message(
       sjid,
       _S.stanza_type,
- --     (post.is_html
+ --     (post.xhtml
  --       and
  --         "Ваше сообщение"
  --       or
 --      "\nАктивирован тестовый режим. Ваше сообщение:\n"
---      ..
-      "@"..author
-      ..(tags_s and ("\nТеги: "..tags_s) or "")
-      .."\nТекст:\n"..post.text.."\n\n"
+--    ..
+      "\n@"..author
+      ..(tags_s and ("\n"..tags_s) or "")
+      .."\n"..post.text.."\n\n"
       .."#"..post.id,
 --)
 --      [[<div class="post">Активирован тестовый режим. Ваше сообщение:</div>]]
 --        ..
+      [[<br />]]..
       [[<a]]
           ..[[ style="text-decoration: none; color: #0055FF; font-weight: bold;"]]
           ..[[ title="Инфо о пользователе @]]..author..[["]]
-          ..[[ href="xmpp:]]..config.jid..[[?message;type=]].._S.stanza_type..[[;body=%40]]..author..[[">@]]..author.."</a>"
-      ..(tags_s and ([[<div class="post_tags">]]..tags_s.."</div>") or "")
-      ..[[<div class="post_text">]]..post.text.."</div><br/>"
+          ..[[ href="xmpp:]]..config.xmpp.jid..[[?message;type=]].._S.stanza_type..[[;body=%40]]..author..[[">@]]..author.."</a>:"
+      ..(tags_s and ([[<div class="post_tags">  ]]..tags_s.."</div>") or "")
+      ..[[<br /><div class="avatar_wrapper"><div class="avatar" style="background: url(]]..post.avatar..[[) 100% 100% no-repeat; background-size: cover; width: 50px; height: 50px;"></div></div>]]
+      ..[[<div class="post_text">]]..post.text.."</div><br />"
       ..[[<div class="post_links">]]
       ..post_links("read")
       ..(
@@ -387,19 +416,19 @@ function xIOn:read_post(post,event,receiver)
         :tag("a", {
           class="post_read_link",
           style="text-decoration: none; color: #C05800; font-weight: bold;",
-          href="xmpp:"..config.jid.."?message;type="..event.stanza.attr.type..";body=%23"..post.id.."+"
+          href="xmpp:"..config.xmpp.jid.."?message;type="..event.stanza.attr.type..";body=%23"..post.id.."+"
         }):text("#"..post.id):up()
         :tag("span"):text(" "):up()
         :tag("a", {
           class="post_del_link",
           style="text-decoration: none; color: #C05800; font-weight: bold;",
-          href="xmpp:"..config.jid.."?message;type="..event.stanza.attr.type..";body=D%20%23"..post.id
+          href="xmpp:"..config.xmpp.jid.."?message;type="..event.stanza.attr.type..";body=D%20%23"..post.id
         }):text("D"):up()
         :tag("span"):text(" "):up()
         :tag("a", {
           class="post_unsub_link",
           style="text-decoration: none; color: #C05800; font-weight: bold;",
-          href="xmpp:"..config.jid.."?message;type="..event.stanza.attr.type..";body=U%20%23"..post.id
+          href="xmpp:"..config.xmpp.jid.."?message;type="..event.stanza.attr.type..";body=U%20%23"..post.id
         }):text("U")
 
 
@@ -416,7 +445,7 @@ function xIOn:read_post(post,event,receiver)
         :tag("a", {
           class="post_read_link",
           style="text-decoration: none; color: #C05800; font-weight: bold;",
-          href="xmpp:"..config.jid.."?message;type="..event.stanza.attr.type..";body=%23"..post.id.."+"
+          href="xmpp:"..config.xmpp.jid.."?message;type="..event.stanza.attr.type..";body=%23"..post.id.."+"
         }):text("#"..post.id):up()
 
 
@@ -454,7 +483,7 @@ function xIOn:set_user_param(event)
 end;
 
 function xIOn:send(s)
-  return xIOn.connection:send(s);
+  return xIOn.XMPP.connection:send(s);
 end;
 
 function xIOn:send_presence(to, type)
@@ -462,7 +491,7 @@ function xIOn:send_presence(to, type)
 end;
 
 function xIOn:send_iq(s, callback, errback)
-  return xIOn.connection:send_iq(s, callback, errback);
+  return xIOn.XMPP.connection:send_iq(s, callback, errback);
 end;
 
 function xIOn:send_message(to, type, text)
@@ -482,11 +511,11 @@ function xIOn:send_html_message(to, type, fallback_text, html)
 end;
 
 function xIOn:ready_hook()
-  xIOn.connection:hook("ready", function ()
+  xIOn.XMPP.connection:hook("ready", function ()
 
-    xIOn.connection:hook_pep(xmlns_mood, function (event)
+    xIOn.XMPP.connection:hook_pep(xmlns_mood, function (event)
       -- Other event, than we generate on stanza hook and so other, then we use in IO.
-      if config.jid:match(event.from) then
+      if config.xmpp.jid:match(event.from) then
         -- Ignore self peps
         return
       end
@@ -515,9 +544,9 @@ function xIOn:ready_hook()
       print(event.from..name..text);
     end); --[[hook mood]]--
   
-    xIOn.connection:hook_pep(xmlns_activity, function (event)
+    xIOn.XMPP.connection:hook_pep(xmlns_activity, function (event)
       -- Other event, than we generate on stanza hook and so other, then we use in IO.
-      if config.jid:match(event.from) then
+      if config.xmpp.jid:match(event.from) then
         -- Ignore self peps
         return
       end
@@ -538,7 +567,7 @@ function xIOn:ready_hook()
       local extended_name = extended_activity and extended_activity.name or nil;
       if name ~= nil and extended_name ~= nil then
         name = " is "..name:gsub("%f[%W]_%f[%w]","")
-          ..":"..extended_name:gsub("%f[%W]_%f[%w]"," ");
+          ..": "..extended_name:gsub("%f[%W]_%f[%w]"," ");
       elseif name ~= nil and extended_name == nil then
         name = " is "..name:gsub("%f[%W]_%f[%w]"," ");
       else
@@ -548,9 +577,9 @@ function xIOn:ready_hook()
       print(event.from..name..text);
     end); --[[hook activity]]--
   
-    xIOn.connection:hook_pep(xmlns_tune, function (event)
+    xIOn.XMPP.connection:hook_pep(xmlns_tune, function (event)
       -- Other event, than we generate on stanza hook and so other, then we use in IO.
-      if config.jid:match(event.from) then
+      if config.xmpp.jid:match(event.from) then
         -- Ignore self peps
         return
       end
@@ -600,7 +629,7 @@ function xIOn:ready_hook()
             * localization (from Riddim too).
         ]]
 --[[
-    if config.debug then
+    if config.xmpp.debug then
       log("debug","source",source_text)
       log("debug","uri",uri_text)
       log("debug","length",length_text)
@@ -626,9 +655,9 @@ function xIOn:ready_hook()
       print(event.from..listening);
     end); --[[tune hook]]
 
-    xIOn.connection:hook_pep(xmlns_geoloc, function (event)
+    xIOn.XMPP.connection:hook_pep(xmlns_geoloc, function (event)
       -- Other event, than we generate on stanza hook and so other, then we use in IO.
-      if config.jid:match(event.from) then
+      if config.xmpp.jid:match(event.from) then
         -- Ignore self peps
         return
       end
@@ -720,16 +749,19 @@ function xIOn:ready_hook()
         end
     end
 
-  xIOn.connection:add_adhoc_command("Submit your name", "random", random_handler);
+  xIOn.XMPP.connection:add_adhoc_command("Submit your name", "random", random_handler);
 ]]--
 
 
-    xIOn.connection:hook("stanza", function (stanza)
+    xIOn.XMPP.connection:hook("stanza", function (stanza)
       local body = stanza:get_child("body");
+      local html_tag = stanza:get_child("html");
+      local html_body = html_tag and html_tag:get_child("body");
       local event = {
         sender = { jid = stanza.attr.from };
         body = (body and body:get_text()) or nil;
         stanza = stanza;
+        html = (html_body and html_body) or nil;
       };
       if stanza.name == "message" then
         if event.body then
@@ -746,10 +778,12 @@ function xIOn:ready_hook()
       end --[[if stanza message]]
     end) --[[hook stanza]]
 
-    --xIOn.connection:send(xIOn.XMPP.presence());
-    xIOn.connection:send(xIOn.XMPP.presence():add_child(xIOn.connection:caps()));
-
-    xIOn.connection:publish_pep(xIOn.XMPP.stanza("tune", { xmlns = xmlns_tune })
+    --xIOn.XMPP.connection:send(xIOn.XMPP.presence());
+    xIOn.XMPP.connection:send(xIOn.XMPP.presence():add_child(xIOn.XMPP.connection:caps()));
+	if config.xmpp.prio then
+		xIOn.XMPP.connection:set_status({ prio = tostring(config.xmpp.prio) })
+	end
+    xIOn.XMPP.connection:publish_pep(xIOn.XMPP.stanza("tune", { xmlns = xmlns_tune })
       :tag("title"):text("Тишина"):up()
       :tag("artist"):text("Пустота"):up()
       :tag("source"):text("Небытие"):up()
@@ -759,43 +793,62 @@ function xIOn:ready_hook()
       :tag("track"):text("1"):up()
     );
 
-    xIOn.connection:publish_pep(xIOn.XMPP.stanza("mood", { xmlns = xmlns_mood })
+    xIOn.XMPP.connection:publish_pep(xIOn.XMPP.stanza("mood", { xmlns = xmlns_mood })
       :tag("neutral"):up()
       :tag("text"):text("O_o"):up()
     );
 
-    xIOn.connection:publish_pep(xIOn.XMPP.stanza("activity", { xmlns = xmlns_activity })
+    xIOn.XMPP.connection:publish_pep(xIOn.XMPP.stanza("activity", { xmlns = xmlns_activity })
       :tag("drinking"):tag("having_a_beer"):up():up()
       :tag("text"):text("Пейте пиво пенное!"):up()
     );
 
-    xIOn.connection:publish_pep(xIOn.XMPP.stanza("geoloc", { xmlns = xmlns_geoloc })
+    xIOn.XMPP.connection:publish_pep(xIOn.XMPP.stanza("geoloc", { xmlns = xmlns_geoloc })
       :tag("room"):text("Серверная"):up()
       :tag("country"):text("Германия"):up()
       :tag("countrycode"):text("DE"):up()
     );
 
---[[
-    xIOn.connection:query_time("mva@localhost", function(rslt)
-            print("TZO: "..rslt.offset);
-            print("TS: "..rslt.utc);
-    end)
-
-    local node = xIOn.connection.pubsub("pubsub.localhost", "princely_musings");
+	--[[
+    local node = xIOn.XMPP.connection.pubsub("pubsub.localhost", "princely_musings");
         node:subscribe("1111@localhost");
 ]]--
 
-    xIOn.connection:hook("presence", function (stanza)
+    xIOn.XMPP.connection:hook("presence", function (stanza)
       if stanza.attr.type ~= 'subscribe' then return nil; end
       xIOn:send_presence(stanza.attr.from, 'subscribed');
     end);
 
-    xIOn.connection.roster:fetch(function(roster)
-          xIOn.roster = roster;
-    end);
+		userinfo = {};
+    xIOn.XMPP.connection.roster:fetch(function(roster)
+          xIOn.XMPP.roster = roster;
 
+	for barejid,user in pairs(roster.items) do
+		userinfo[barejid] = {};
+		local avatar, user_time;
+		xIOn.XMPP.connection:query_time(barejid, function(rslt)
+			userinfo[barejid].time = rslt and rslt.utc or 0;
+		end)
 
-end); --[[ xIOn.connection:hook ]]
+		xIOn.XMPP.connection:get_vcard(barejid, function(vCard)
+			local data, dtype;
+			for i=1,#vCard do
+				if vCard[i].name == "PHOTO" then
+					data = vCard[i][1];
+					data = data:gsub("\n","");
+					dtype = vCard[i].TYPE[1];
+					break
+				end
+			end
+			if data then
+				userinfo[barejid].avatar = 'data:'..dtype..';base64,'..data;
+			end
+		end)
+	end
+
+	end);
+
+end); --[[ xIOn.XMPP.connection:hook ]]
 
 end
 

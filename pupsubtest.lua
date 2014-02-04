@@ -1,5 +1,5 @@
 #!/usr/bin/env luajit
-local jid, password = "1111@localhost/2222", "1111";
+local jid, password = "", "";
 require "verse".init("client"); -- XMPP client library
 c = verse.new();
 c:add_plugin("uptime");
