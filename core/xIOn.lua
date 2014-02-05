@@ -98,6 +98,9 @@ xIOn.XMPP.roster = {
 				if param == "" then
 					param = nil
 				end
+				if param then
+					param = param:gsub("%-","%%-")
+				end
 				for jid, item in pairs(xIOn.XMPP.connection.roster.items) do
 					local name, host = item.name or split_jid(jid);
 					local groups = table.concat(item.groups or {}, ", ");
@@ -392,8 +395,8 @@ function xIOn:write_post(post,event)
     );
 	for barejid,user in pairs(xIOn.XMPP.connection.roster.items) do
 --		if (user.jid ~= xIOn.XMPP.bare_jid(event.sender.jid)) and (user.subscription == "both") then
+		j,n,usergroups = xIOn.XMPP.roster.list(user.name);
 --		if (user.jid == xIOn.XMPP.bare_jid(event.sender.jid)) and (user.subscription == "both") then
-		usergroups = xIOn.XMPP.roster.list(barejid);
 		if (user.subscription == "both") and not(usergroups:match("OFF")) then
 			post.author = xIOn.XMPP.connection.roster.items[xIOn.XMPP.bare_jid(event.sender.jid)].name or xIOn.XMPP.jid2nick(event.sender.jid);
 			post.avatar = userinfo[xIOn.XMPP.bare_jid(event.sender.jid)].avatar;
