@@ -313,13 +313,13 @@ function xIOn:write_post(post,event)
       ..[[</div>]]
     );
       for barejid,user in pairs(xIOn.XMPP.connection.roster.items) do
-        if (user.jid ~= bare_jid(event.sender.jid)) and (user.subscription == "both") then
+ --       if (user.jid ~= bare_jid(event.sender.jid)) and (user.subscription == "both") then
 --        if (user.jid == bare_jid(event.sender.jid)) and (user.subscription == "both") then
           post.author = xIOn.XMPP.connection.roster.items[bare_jid(event.sender.jid)].name or jid2nick(event.sender.jid);
 		  post.avatar = userinfo[bare_jid(event.sender.jid)].avatar;
 		  post.time = userinfo[bare_jid(event.sender.jid)].time;
           xIOn:read_post(post,event,user.jid); --TODO: remove
-        end
+--        end
       end
   end;
 end;
