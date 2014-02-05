@@ -63,7 +63,85 @@ xIOn.XMPP.connection:add_disco_feature(xmlns_geoloc_notify);
 xIOn.XMPP.connection:add_disco_feature(xmlns_adhoc);
 xIOn.XMPP.connection:add_disco_feature(xmlns_xhtml);
 
-xIOn.XMPP.roster = xIOn.XMPP.connection.roster;
+local function printor(str) return function() print(str) end end
+xIOn.XMPP.roster = {
+			add = function(jid) xIOn.XMPP.connection.roster:add_contact(jid) end;
+			sub = function(jid) xIOn.XMPP.connection:send(xIOn.XMPP.presence{to=jid, type="subscribe"}); end;
+			unsub = function(jid) xIOn.XMPP.connection:send(xIOn.XMPP.presence{to=jid, type="unsubscribe"}); end;
+			auth = function(jid) xIOn.XMPP.connection:send(xIOn.XMPP.presence{to=jid, type="subscribed"}); end;
+			unauth = function(jid) xIOn.XMPP.connection:send(xIOn.XMPP.presence{to=jid, type="unsubscribed"}); end;
+			del = function(jid) xIOn.XMPP.connection.roster:delete_contact(jid) end;
+			setnick = function(jid,nick)
+				local item = xIOn.XMPP.connection.roster.items[jid];
+				if not item then print("no jid "..jid); return; end
+				xIOn.XMPP.connection.roster:add_contact(jid, nick, item.groups or {}, printor("saved"));
+			end;
+			addgroup = function(jid,group)
+				local item = xIOn.XMPP.connection.roster.items[jid];
+				local groups = item.groups or {};
+				table.insert(groups, group);
+				xIOn.XMPP.connection.roster:add_contact(jid, item.name, groups, printor("saved"));
+			end;
+			delgroup = function(jid,group)
+				local item = xIOn.XMPP.connection.roster.items[jid];
+				local groups = item.groups;
+				if not groups then return end;
+				for i = 1,#groups do
+					if groups[i] == group then
+						table.remove(groups, i);
+						break
+					end
+				end
+				xIOn.XMPP.connection.roster:add_contact(jid, item.name, groups, printor("saved"));
+			end;
+			list = function(param)
+				if param == "" then
+					param = nil
+				end
+				for jid, item in pairs(xIOn.XMPP.connection.roster.items) do
+					local name, host = item.name or split_jid(jid);
+					local groups = table.concat(item.groups or {}, ", ");
+					if not param or ( (name and name:match(param)) or jid:match(param) ) then
+						return jid, name or host, groups;
+					end
+				end
+			end;
+			listgroups = function(param)
+				local groups = {};
+				for jid, item in pairs(xIOn.XMPP.connection.roster.items) do
+					for i = 1,#item.groups do
+						groups[item.groups[i]] = ( groups[item.groups[i]] or 0 ) + 1;
+					end
+				end
+				for group, size in pairs(groups) do
+					return group, size
+				end
+			end;
+			show = function(barejid)
+				local item = xIOn.XMPP.connection.roster.items[barejid];
+				if not item then
+					print("No such contact: "..tostring(barejid));
+					return;
+				end
+
+				for k,v in pairs(item) do
+					return k,type(v) == "table" and table.concat(v, ", ") or v
+				end
+			end;
+--[[
+			export = function()
+				local stored_roster = { [false] = { version = xIOn.XMPP.connection.roster.ver } }
+				for jid, item in pairs(xIOn.XMPP.connection.roster.items) do
+					stored_roster[jid] = {
+						name = item.name;
+						subscription = item.subscription;
+						groups = { unpack(item.groups) };
+					}
+				end
+				print("return "..require"util.serialization".serialize(stored_roster));
+			end
+]]
+		}
 
 function xIOn:default_hooks()
   xIOn.XMPP.connection:hook("authentication-failure", function (err)
@@ -87,10 +165,10 @@ language = config.xmpp.language or "ru";
 
 
 
-local function bare_jid(jid)
+function xIOn.XMPP.bare_jid(jid)
   return jid:gsub("(.*@.*%.?.*)/.*","%1")
 end
-local function jid2nick(jid)
+function xIOn.XMPP.jid2nick(jid)
   return jid:gsub("(.*)@.*%..*/?.*","%1")
 end
 
@@ -312,15 +390,17 @@ function xIOn:write_post(post,event)
       ..post_links("edit")
       ..[[</div>]]
     );
-      for barejid,user in pairs(xIOn.XMPP.connection.roster.items) do
- --       if (user.jid ~= bare_jid(event.sender.jid)) and (user.subscription == "both") then
---        if (user.jid == bare_jid(event.sender.jid)) and (user.subscription == "both") then
-          post.author = xIOn.XMPP.connection.roster.items[bare_jid(event.sender.jid)].name or jid2nick(event.sender.jid);
-		  post.avatar = userinfo[bare_jid(event.sender.jid)].avatar;
-		  post.time = userinfo[bare_jid(event.sender.jid)].time;
-          xIOn:read_post(post,event,user.jid); --TODO: remove
---        end
-      end
+	for barejid,user in pairs(xIOn.XMPP.connection.roster.items) do
+--		if (user.jid ~= xIOn.XMPP.bare_jid(event.sender.jid)) and (user.subscription == "both") then
+--		if (user.jid == xIOn.XMPP.bare_jid(event.sender.jid)) and (user.subscription == "both") then
+		usergroups = xIOn.XMPP.roster.list(barejid);
+		if (user.subscription == "both") and not(usergroups:match("OFF")) then
+			post.author = xIOn.XMPP.connection.roster.items[xIOn.XMPP.bare_jid(event.sender.jid)].name or xIOn.XMPP.jid2nick(event.sender.jid);
+			post.avatar = userinfo[xIOn.XMPP.bare_jid(event.sender.jid)].avatar;
+			post.time = userinfo[xIOn.XMPP.bare_jid(event.sender.jid)].time;
+			xIOn:read_post(post,event,user.jid); --TODO: remove
+		end
+	end
   end;
 end;
 
@@ -821,7 +901,7 @@ function xIOn:ready_hook()
 
 		userinfo = {};
     xIOn.XMPP.connection.roster:fetch(function(roster)
-          xIOn.XMPP.roster = roster;
+--          xIOn.XMPP.roster = roster;
 
 	for barejid,user in pairs(roster.items) do
 		userinfo[barejid] = {};

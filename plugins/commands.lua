@@ -44,6 +44,7 @@
         if not (type(event) == "table") then
           return --TODO
         end --[[ event table ]]
+		xIOn.XMPP.roster.delgroup(xIOn.XMPP.bare_jid(event.sender.jid),"OFF");
         xIOn:send(xIOn.XMPP.presence({to = event.sender.jid, from = config.jid}));
         xIOn:send_message(event.sender.jid, event.stanza.attr.type,"\n".."Доставка сообщений включена.")
         end;
@@ -64,7 +65,8 @@
         if not (type(event) == "table") then
           return --TODO
         end --[[ event table ]]
-        xIOn:send_message(event.sender.jid, event.stanza.attr.type,"\n".."Доставка сообщений отключена.")
+		xIOn.XMPP.roster.addgroup(xIOn.XMPP.bare_jid(event.sender.jid),"OFF");
+		xIOn:send_message(event.sender.jid, event.stanza.attr.type,"\n".."Доставка сообщений отключена.")
         end;
 
     here =
@@ -570,7 +572,7 @@
           return "Справка по отправке приватных сообщений"
         end --[[ event info ]]
       end;
-      
+
     notation =
       function(event)
         --TODO
@@ -605,7 +607,7 @@
         end --[[ event info ]]
       end;
   }
-     
+
   handlers = {
     non_existant_command =
       function(event)
