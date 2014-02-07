@@ -10,7 +10,8 @@ function xIOn.DB:write_post(post)
       write post in DB.
       xIOn:user_options(psto_notation)
   ]]--
-  post.id = math.random(10000000);
+  post.id = ("%x"):format(os.date("%s"))..tostring(math.random(97,122)):char();
+  --math.random(10000000);
   return post
 end;
 
